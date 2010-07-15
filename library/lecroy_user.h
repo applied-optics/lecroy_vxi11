@@ -25,8 +25,6 @@
 
 #include "../../vxi11/vxi11_user.h"
 
-void	lecroy_scope_channel_str(char chan, char *source);
-char	lecroy_relate_function_to_source(char chan);
 int	lecroy_open(char *ip, CLINK *clink);
 int	lecroy_close(char *ip, CLINK *clink);
 int	lecroy_init(CLINK *clink);
@@ -34,20 +32,31 @@ long	lecroy_obtain_insp_long(CLINK *clink, const char *cmd, unsigned long timeou
 double	lecroy_obtain_insp_double(CLINK *clink, const char *cmd, unsigned long timeout);
 long	lecroy_receive_data_block(CLINK *clink, char *buffer, unsigned long len, unsigned long timeout);
 long	lecroy_calculate_no_of_bytes(CLINK *clink, char chan, unsigned long timeout);
+long	lecroy_calculate_no_of_bytes_from_vbs(CLINK *clink, char chan);
 long	lecroy_get_data(CLINK *clink, char chan, int clear_sweeps, char *buf, unsigned long buf_len,unsigned long timeout);
 long	lecroy_get_data(CLINK *clink, char chan, int clear_sweeps, char *buf, unsigned long buf_len, int arm_and_wait, unsigned long timeout);
 void	lecroy_set_for_auto(CLINK *clink);
 void	lecroy_set_for_norm(CLINK *clink);
+void	lecroy_single(CLINK *clink);
+void	lecroy_stop(CLINK *clink);
+int	lecroy_get_bytes_per_point(CLINK *clink);
 void	lecroy_clear_sweeps(CLINK *clink);
 int	lecroy_wait_all_averages(CLINK *clink, unsigned long timeout);
 long	lecroy_write_wfi_file(CLINK *clink, char *wfiname, char chan, char *captured_by, int no_of_traces, int bytes_per_point, unsigned long timeout);
+long	lecroy_write_wfi_file(CLINK *clink, char *wfiname, char chan, char *captured_by, int no_of_traces, int bytes_per_point, long no_of_bytes, unsigned long timeout);
 char	lecroy_set_averages(CLINK *clink, char chan, int no_averages);
+int	lecroy_get_averages(CLINK *clink, char chan);
 char	lecroy_set_segmented_averages(CLINK *clink, char chan, int no_averages);
+char	lecroy_set_segmented_averages(CLINK *clink, char chan, int no_averages, int arm);
 int	lecroy_get_segmented_status(CLINK *clink);
 int	lecroy_get_segmented(CLINK *clink);
 int	lecroy_set_segmented(CLINK *clink, int no_segments);
+int	lecroy_set_segmented(CLINK *clink, int no_segments, int arm);
 int	lecroy_display_channel(CLINK *clink, char chan, int on_or_off);
 double	lecroy_set_sample_rate(CLINK *clink, double s_rate, long n_points, long timeout);
+void	lecroy_scope_channel_str(char chan, char *source);
+char	lecroy_relate_function_to_source(char chan);
+int	lecroy_is_maths_chan(char chan);
 /*int	lecroy_report_status(CLINK *clink, unsigned long timeout);
 int	lecroy_get_setup(CLINK *clink, char *buf, unsigned long buf_len);
 int	lecroy_send_setup(CLINK *clink, char *buf, unsigned long buf_len);

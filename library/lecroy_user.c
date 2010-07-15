@@ -25,105 +25,6 @@
 
 #include "lecroy_user.h"
 
-/* In the library we tend to use a single char to denote a channel. This works
- * fairly well, and is rooted in the old days when LeCroy called their maths
- * channels A, B, C, and D. So channel 'A' is actually maths function "F1", and
- * we add the extra ":" at the end because that is the format of the remote
- * control commands for LeCroy. */
-void	lecroy_scope_channel_str(char chan, char *source){
-	switch (chan) {
-		case 'A' :
-		case 'a' : strcpy(source,"F1:");
-			break;
-		case 'B' :
-		case 'b' : strcpy(source,"F2:");
-			break;
-		case 'C' :
-		case 'c' : strcpy(source,"F3:");
-			break;
-		case 'D' :
-		case 'd' : strcpy(source,"F4:");
-			break;
-		case 'E' :
-		case 'e' : strcpy(source,"F5:");
-			break;
-		case 'F' :
-		case 'f' : strcpy(source,"F6:");
-			break;
-		case 'G' :
-		case 'g' : strcpy(source,"F7:");
-			break;
-		case 'H' :
-		case 'h' : strcpy(source,"F8:");
-			break;
-		case '1' : strcpy(source,"C1:");
-			break;
-		case '2' : strcpy(source,"C2:");
-			break;
-		case '3' : strcpy(source,"C3:");
-			break;
-		case '4' : strcpy(source,"C4:");
-			break;
-		default :  printf("error: unknown channel '%c', using channel 1\n",chan);
-			   strcpy(source,"C1:");
-			break;
-		}
-	}
-
-/* This function finds the relates maths function channels to their equivalent
- * acquisition channels, ie if you pass 'A' then you get returned '1'; if you
- * pass '3' you get returned 'C'. This function is used when setting up maths
- * function parameters, for instance, setting the number of averages. Not only
- * do you need to specify the maths function channel itself, unfortunately you
- * must also specify the acquisition channel it works on.
- *
- * This function allows a certain amount of flexibility in the way the user
- * refers to channels. For instance, they may say "I want 1000 averages of
- * channel 1," in which case maths channel A (F1) is set up to do the averaging.
- * Alternatively, the user may have already set up channel A (F1) to do
- * averaging (hopefully of channel 1!) and may wish to change the number of
- * averages. The LeCroy programming commands do not allow us to say, "Set the
- * number of averages on maths channel F1 to 1000", it only allows us to say,
- * "Set the source of F1 to be C1, and set the number of averages to 1000."
- * This function allows the library to make a sensible guess about the channel
- * source for a given maths function channel. */
-char	lecroy_relate_function_to_source(char chan) {
-	switch(chan) {
-		case 'A' :
-		case 'a' : return '1';
-			break;
-		case 'B' :
-		case 'b' : return '2';
-			break;
-		case 'C' :
-		case 'c' : return '3';
-			break;
-		case 'D' :
-		case 'd' : return '4';
-			break;
-		case 'E' :
-		case 'e' :
-		case 'F' :
-		case 'f' :
-		case 'G' :
-		case 'g' :
-		case 'H' :
-		case 'h' : printf("error: Functions F5-F8 (E-H) don't have an associated channel, using channel 1\n");
-			   return '1';
-		case '1' : return 'A';
-			break;
-		case '2' : return 'B';
-			break;
-		case '3' : return 'C';
-			break;
-		case '4' : return 'D';
-			break;
-		default :  printf("error: unknown channel '%c', using channel 1\n",chan);
-			   return '1';
-			break;
-		}
-	}
-
 /* This really is just a wrapper. Only here because folk might be uncomfortable
  * using commands from the vxi11_user library directly! */
 int	lecroy_open(char *ip, CLINK *clink) {
@@ -205,11 +106,39 @@ long	lecroy_calculate_no_of_bytes(CLINK *clink, char chan, unsigned long timeout
 char	cmd[256];
 char	source[20];
 	lecroy_scope_channel_str(chan, source);
-	sprintf(cmd, "%sINSP? WAVE_ARRAY_1", source);
+	sprintf(cmd, "%s:INSP? WAVE_ARRAY_1", source);
 	lecroy_obtain_insp_long(clink, cmd, timeout);
 	return lecroy_obtain_insp_long(clink, cmd, timeout);
 	}
 
+/* This version of the function, rather than using the "INSP? WAVE_ARRAY_1" query,
+ * uses VBS commands. The difference is that the VBS responses get updated the moment
+ * a setting (like the timebase) is set. However, there is no simple command that
+ * gives you they same number as the actual number of bytes returned, there is usually
+ * an extra single byte on the maths channels, and an extra 2 bytes on the acquisition
+ * channels. */
+long	lecroy_calculate_no_of_bytes_from_vbs(CLINK *clink, char chan) {
+int	bytes_per_point;
+long	no_of_points, no_of_segments, no_of_bytes;
+
+	no_of_points = vxi11_obtain_long_value(clink, "VBS? 'Return=app.Acquisition.Horizontal.NumPoints'");
+	bytes_per_point = lecroy_get_bytes_per_point(clink);
+
+	// Check whether we've been passed a maths channel or not. If so, then it
+	// doesn't matter whether we're in segmented mode or not, as we will be taking
+	// the average of all the segments, in which case the number of segments is
+	// irrelevant as it will not affect the number of bytes. Also, maths channels
+	// return an array which is 1+app.Acquisition.Horizontal.Points, acquisition
+	// channels return 2+app.Acquisition.Horizontal.Points (x no of bytes per point)
+	if(lecroy_is_maths_chan(chan) == 1) {
+		no_of_bytes = bytes_per_point * (1 + no_of_points);
+		}
+	else {
+		no_of_segments = lecroy_get_segmented(clink); // returns 1 if not in segmented mode
+		no_of_bytes = bytes_per_point * no_of_segments * (2 + no_of_points);
+		}
+	return no_of_bytes;
+	}
 
 /* This function reads a response in the form of a definite-length block, such
  * as when you ask for waveform data. The data is returned in the following
@@ -302,8 +231,7 @@ char	source[20];
 long	ret;
 int	is_maths_chan;
 
- 	if(chan=='1' || chan=='2' || chan=='3' || chan=='4')	is_maths_chan = 0;
-	else							is_maths_chan = 1;
+	is_maths_chan = lecroy_is_maths_chan(chan);
 
 	if((is_maths_chan == 1) && (clear_sweeps == 1))		lecroy_clear_sweeps(clink);
 	if(arm_and_wait == 1)					vxi11_send(clink, "ARM;WAIT");
@@ -316,7 +244,7 @@ int	is_maths_chan;
 		}
 	if((is_maths_chan == 1) && (clear_sweeps == 1))		lecroy_wait_all_averages(clink,timeout);
 	lecroy_scope_channel_str(chan, source);
-	sprintf(cmd, "%sWF? DAT1", source);
+	sprintf(cmd, "%s:WF? DAT1", source);
 	vxi11_send(clink, cmd);
 	return lecroy_receive_data_block(clink, buf, buf_len, timeout);
 	}
@@ -327,6 +255,22 @@ void	lecroy_set_for_auto(CLINK *clink) {
 
 void	lecroy_set_for_norm(CLINK *clink) {
 	vxi11_send(clink, "TRMD NORM");
+	}
+
+void	lecroy_single(CLINK *clink) {
+	vxi11_send(clink, "ARM;WAIT");
+	}
+
+void	lecroy_stop(CLINK *clink) {
+	vxi11_send(clink, "STOP");
+	}
+
+int	lecroy_get_bytes_per_point(CLINK *clink) {
+char	buf[256];
+	memset(buf, 0, 256);
+	vxi11_send_and_receive(clink, "COMM_FORMAT?", buf, 256, VXI11_READ_TIMEOUT);
+	if(strstr(buf, "WORD") != NULL) return 2;
+	else				return 1;
 	}
 
 void	lecroy_clear_sweeps(CLINK *clink) {
@@ -384,10 +328,14 @@ int	test = 0;
 	return 0;
 	}
 
+/* This wrapper first calculates the number of bytes, then passes this information on to the main function */
 long	lecroy_write_wfi_file(CLINK *clink, char *wfiname, char chan, char *captured_by, int no_of_traces, int bytes_per_point, unsigned long timeout) {
+	return lecroy_write_wfi_file(clink, wfiname, chan, captured_by, no_of_traces, bytes_per_point, lecroy_calculate_no_of_bytes(clink, chan, timeout), timeout);
+	}
+
+long	lecroy_write_wfi_file(CLINK *clink, char *wfiname, char chan, char *captured_by, int no_of_traces, int bytes_per_point, long no_of_bytes, unsigned long timeout) {
 FILE	*wfi;
 double	vgain,voffset,hinterval,hoffset;
-long	no_of_bytes;
 int	ret;
 char	cmd[256];
 char	source[20];
@@ -395,18 +343,24 @@ int	no_of_segments;
 
 	lecroy_scope_channel_str(chan, source);
 
-	no_of_bytes = lecroy_calculate_no_of_bytes(clink, chan, timeout);
-	sprintf(cmd, "%sINSP? HORIZ_INTERVAL", source);
-	hinterval = lecroy_obtain_insp_double(clink, cmd, timeout);
-	sprintf(cmd, "%sINSP? HORIZ_OFFSET", source);
-	hoffset = lecroy_obtain_insp_double(clink, cmd, timeout);
-	sprintf(cmd, "%sINSP? VERTICAL_GAIN", source);
-	vgain = lecroy_obtain_insp_double(clink, cmd, timeout);
-	sprintf(cmd, "%sINSP? VERTICAL_OFFSET", source);
-	voffset = lecroy_obtain_insp_double(clink, cmd, timeout);
+	// VBS commands return quicker than INSP? commands, so where there is a
+	// direct equivalent they are used instead to speed things up
 
-	if(chan=='1' || chan=='2' || chan=='3' || chan=='4') {
-		if(lecroy_get_segmented_status(clink) == 1)	no_of_segments = lecroy_get_segmented(clink);
+//	sprintf(cmd, "%s:INSP? HORIZ_INTERVAL", source);
+//	hinterval = lecroy_obtain_insp_double(clink, cmd, timeout);
+	sprintf(cmd, "VBS? 'Return=app.Acquisition.Horizontal.TimePerPoint'");
+	hinterval = vxi11_obtain_double_value(clink, cmd, timeout);
+	sprintf(cmd, "%s:INSP? HORIZ_OFFSET", source);
+	hoffset = lecroy_obtain_insp_double(clink, cmd, timeout);
+	sprintf(cmd, "%s:INSP? VERTICAL_GAIN", source);
+	vgain = lecroy_obtain_insp_double(clink, cmd, timeout);
+	sprintf(cmd, "%s:INSP? VERTICAL_OFFSET", source);
+	voffset = lecroy_obtain_insp_double(clink, cmd, timeout);
+	//sprintf(cmd, "VBS? 'Return=app.Acquisition.%s.VerOffset'", source);
+	//voffset = vxi11_obtain_double_value(clink, cmd, timeout);
+
+	if(lecroy_is_maths_chan(chan) == 0) {
+		no_of_segments = lecroy_get_segmented(clink); // returns 1 if not in segmented mode
 		}
 	else {
 		no_of_segments = 1;
@@ -461,7 +415,7 @@ char	maths_chan_str[20];
 char	source[20];
 char	cmd[256];
 
-	if(chan=='1' || chan=='2' || chan=='3' || chan=='4') {
+	if(lecroy_is_maths_chan(chan) == 0) {
 		maths_chan = lecroy_relate_function_to_source(chan);
 		}
 	else {
@@ -470,8 +424,8 @@ char	cmd[256];
 		}
 	if(no_averages > 1) {
 		lecroy_scope_channel_str(maths_chan, maths_chan_str);
-		sprintf(source,"C%c", chan);
-		sprintf(cmd, "%sDEF EQN, 'AVG(%s)',AVERAGETYPE,SUMMED,SWEEPS,%d SWEEP", maths_chan_str, source, no_averages);
+		lecroy_scope_channel_str(chan, source);
+		sprintf(cmd, "%s:DEF EQN, 'AVG(%s)',AVERAGETYPE,SUMMED,SWEEPS,%d SWEEP", maths_chan_str, source, no_averages);
 		vxi11_send(clink, cmd);
 		lecroy_display_channel(clink, maths_chan, 1);
 		return maths_chan;
@@ -483,11 +437,33 @@ char	cmd[256];
 		}
 	}
 
+int	lecroy_get_averages(CLINK *clink, char chan) {
+char	maths_chan;
+char	maths_chan_str[20];
+char	source[20];
+char	cmd[256];
+
+	if(lecroy_is_maths_chan(chan) == 0) {
+		maths_chan = lecroy_relate_function_to_source(chan);
+		}
+	else {
+		maths_chan = chan;
+		chan = lecroy_relate_function_to_source(maths_chan);
+		}
+	lecroy_scope_channel_str(maths_chan, maths_chan_str);
+	sprintf(cmd, "VBS? 'Return=app.Math.%s.Operator1Setup.Sweeps'", maths_chan_str);
+	return (int) vxi11_obtain_long_value(clink, cmd);
+	}
+
 char	lecroy_set_segmented_averages(CLINK *clink, char chan, int no_averages) {
+	return lecroy_set_segmented_averages(clink, chan, no_averages, 1);
+	}
+
+char	lecroy_set_segmented_averages(CLINK *clink, char chan, int no_averages, int arm) {
 char	maths_chan;
 int	actual_no_averages;
 
-	actual_no_averages = lecroy_set_segmented(clink, no_averages);
+	actual_no_averages = lecroy_set_segmented(clink, no_averages, arm);
 	maths_chan = lecroy_set_averages(clink, chan, actual_no_averages);
 	return maths_chan;
 	}
@@ -502,15 +478,27 @@ int	segmented_status;
 	else				return 0;
 	}
 
+/* Checks to see if we are in segmented mode, if we are then return the number of
+ * segments (minimum = 2), if not then return 1 */
 int	lecroy_get_segmented(CLINK *clink) {
-	return (int) vxi11_obtain_long_value(clink, "VBS? 'Return=app.Acquisition.Horizontal.NumSegments'");
+	if(lecroy_get_segmented_status(clink) == 1) {
+		return (int) vxi11_obtain_long_value(clink, "VBS? 'Return=app.Acquisition.Horizontal.NumSegments'");
+		}
+	else {
+		return 1;
+		}
 	}
 
 int	lecroy_set_segmented(CLINK *clink, int no_segments) {
+	return lecroy_set_segmented(clink, no_segments, 1);
+	}
+
+int	lecroy_set_segmented(CLINK *clink, int no_segments, int arm) {
 char	cmd[256];
 int	actual_no_segments;
 
-	sprintf(cmd, "SEQ ON,%d;ARM", no_segments);
+	if(arm == 0)	sprintf(cmd, "SEQ ON,%d", no_segments);
+	else		sprintf(cmd, "SEQ ON,%d;ARM", no_segments);
 	vxi11_send(clink, cmd);
 	actual_no_segments = lecroy_get_segmented(clink);
 	return actual_no_segments;
@@ -523,8 +511,8 @@ char	cmd[256];
 
 	memset(source,0,20);
 	lecroy_scope_channel_str(chan, source);
-	if(on_or_off == 0)	sprintf(cmd, "%sTRACE OFF", source);
-	else			sprintf(cmd, "%sTRACE ON", source);
+	if(on_or_off == 0)	sprintf(cmd, "%s:TRACE OFF", source);
+	else			sprintf(cmd, "%s:TRACE ON", source);
 	return vxi11_send(clink, cmd);
 	}
 
@@ -549,3 +537,106 @@ char	cmd[256];
 	actual_s_rate = vxi11_obtain_double_value(clink, "VBS? 'Return=app.Acquisition.Horizontal.SampleRate'", timeout);
 	return actual_s_rate;
 	}
+
+/* In the library we tend to use a single char to denote a channel. This works
+ * fairly well, and is rooted in the old days when LeCroy called their maths
+ * channels A, B, C, and D. So channel 'A' is actually maths function "F1". */
+void	lecroy_scope_channel_str(char chan, char *source){
+	switch (chan) {
+		case 'A' :
+		case 'a' : strcpy(source,"F1");
+			break;
+		case 'B' :
+		case 'b' : strcpy(source,"F2");
+			break;
+		case 'C' :
+		case 'c' : strcpy(source,"F3");
+			break;
+		case 'D' :
+		case 'd' : strcpy(source,"F4");
+			break;
+		case 'E' :
+		case 'e' : strcpy(source,"F5");
+			break;
+		case 'F' :
+		case 'f' : strcpy(source,"F6");
+			break;
+		case 'G' :
+		case 'g' : strcpy(source,"F7");
+			break;
+		case 'H' :
+		case 'h' : strcpy(source,"F8");
+			break;
+		case '1' : strcpy(source,"C1");
+			break;
+		case '2' : strcpy(source,"C2");
+			break;
+		case '3' : strcpy(source,"C3");
+			break;
+		case '4' : strcpy(source,"C4");
+			break;
+		default :  printf("error: unknown channel '%c', using channel 1\n",chan);
+			   strcpy(source,"C1");
+			break;
+		}
+	}
+
+/* This function finds the relates maths function channels to their equivalent
+ * acquisition channels, ie if you pass 'A' then you get returned '1'; if you
+ * pass '3' you get returned 'C'. This function is used when setting up maths
+ * function parameters, for instance, setting the number of averages. Not only
+ * do you need to specify the maths function channel itself, unfortunately you
+ * must also specify the acquisition channel it works on.
+ *
+ * This function allows a certain amount of flexibility in the way the user
+ * refers to channels. For instance, they may say "I want 1000 averages of
+ * channel 1," in which case maths channel A (F1) is set up to do the averaging.
+ * Alternatively, the user may have already set up channel A (F1) to do
+ * averaging (hopefully of channel 1!) and may wish to change the number of
+ * averages. The LeCroy programming commands do not allow us to say, "Set the
+ * number of averages on maths channel F1 to 1000", it only allows us to say,
+ * "Set the source of F1 to be C1, and set the number of averages to 1000."
+ * This function allows the library to make a sensible guess about the channel
+ * source for a given maths function channel. */
+char	lecroy_relate_function_to_source(char chan) {
+	switch(chan) {
+		case 'A' :
+		case 'a' : return '1';
+			break;
+		case 'B' :
+		case 'b' : return '2';
+			break;
+		case 'C' :
+		case 'c' : return '3';
+			break;
+		case 'D' :
+		case 'd' : return '4';
+			break;
+		case 'E' :
+		case 'e' :
+		case 'F' :
+		case 'f' :
+		case 'G' :
+		case 'g' :
+		case 'H' :
+		case 'h' : printf("error: Functions F5-F8 (E-H) don't have an associated channel, using channel 1\n");
+			   return '1';
+		case '1' : return 'A';
+			break;
+		case '2' : return 'B';
+			break;
+		case '3' : return 'C';
+			break;
+		case '4' : return 'D';
+			break;
+		default :  printf("error: unknown channel '%c', using channel 1\n",chan);
+			   return '1';
+			break;
+		}
+	}
+
+int	lecroy_is_maths_chan(char chan) {
+	if(chan=='1' || chan=='2' || chan=='3' || chan=='4')    return 0;
+	else							return 1;
+	}
+
