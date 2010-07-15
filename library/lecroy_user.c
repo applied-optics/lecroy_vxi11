@@ -270,24 +270,51 @@ long	lecroy_get_data(CLINK *clink, char chan, int clear_sweeps, char *buf, unsig
 	return lecroy_get_data(clink, chan, clear_sweeps, buf, buf_len, 1, timeout);
 	}
 
+/* The "get_data" function has to cope with grabbing the data under a variety
+ * of acquisition conditions. For data from channels 1-4 the general idea is to
+ * ARM (single acquisition), WAIT, then *OPC? (OPeration Complete?). For data
+ * from the maths channels (averaging) you tend to want the scope in norm mode,
+ * issue a CLSW request then wait for the registers to indicate that averaging
+ * has finished. Using a maths channel to take the average of a sequence (using
+ * segmented memory) involves a combination of the two: issuing ARM and CLSW,
+ * and checking that averaging has completed before grabbing the data.
+ * The additional complication is that if you are grabbing data from more than 
+ * one channel, if you want the data to be synchronous, you must avoid issuing 
+ * either an ARM or a CLSW command. Hence the clear_sweeps and arm_and_wait
+ * flag arguments.
+ *
+ * Summary of required settings (X = "don't care"):
+ * Job				| New acq?	| Channel	| clear_sweeps	| arm_and_wait
+ * -------------------------------------------------------------------------------------------
+ * Realtime acquisition		| Yes		| 1-4		| X		| 1
+ *    "          "		| No		| 1-4		| X		| 0
+ * Segmented acquisition	| Yes		| 1-4		| X		| 1
+ *     "          "		| No		| 1-4		| X		| 0
+ * Averages			| Yes		| A-D		| 1		| 0
+ *    "				| No		| A-D		| 0		| 0
+ * Segmented averages		| Yes		| A-D		| 1		| 1
+ *     "        "		| No		| A-D		| 0		| 0
+ *
+ */
 long	lecroy_get_data(CLINK *clink, char chan, int clear_sweeps, char *buf, unsigned long buf_len, int arm_and_wait, unsigned long timeout) {
 char	cmd[256];
 char	source[20];
 long	ret;
-	if(chan=='1' || chan=='2' || chan=='3' || chan=='4') {
-		if(arm_and_wait == 1)	ret = vxi11_obtain_long_value(clink, "ARM;WAIT;*OPC?", timeout);
-		else			ret = vxi11_obtain_long_value(clink, "*OPC?", timeout);
+int	is_maths_chan;
+
+ 	if(chan=='1' || chan=='2' || chan=='3' || chan=='4')	is_maths_chan = 0;
+	else							is_maths_chan = 1;
+
+	if((is_maths_chan == 1) && (clear_sweeps == 1))		lecroy_clear_sweeps(clink);
+	if(arm_and_wait == 1)					vxi11_send(clink, "ARM;WAIT");
+	if((arm_and_wait == 1) || (is_maths_chan == 0)) {
+		ret = vxi11_obtain_long_value(clink, "*OPC?", timeout);
 		if(ret != 1) {
 			printf("lecroy_get_data: error, *OPC? did not return 1\n");
 			return 0;
 			}
 		}
-	else {
-		if(clear_sweeps == 1) {
-			lecroy_clear_sweeps(clink);
-			lecroy_wait_all_averages(clink,timeout);
-			}
-		}
+	if((is_maths_chan == 1) && (clear_sweeps == 1))		lecroy_wait_all_averages(clink,timeout);
 	lecroy_scope_channel_str(chan, source);
 	sprintf(cmd, "%sWF? DAT1", source);
 	vxi11_send(clink, cmd);
