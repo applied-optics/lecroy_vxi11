@@ -54,6 +54,7 @@ int	lecroy_set_segmented(CLINK *clink, int no_segments);
 int	lecroy_set_segmented(CLINK *clink, int no_segments, int arm);
 int	lecroy_display_channel(CLINK *clink, char chan, int on_or_off);
 double	lecroy_set_sample_rate(CLINK *clink, double s_rate, long n_points, long timeout);
+int	lecroy_set_trigger_channel(CLINK *clink, char chan);
 void	lecroy_scope_channel_str(char chan, char *source);
 char	lecroy_relate_function_to_source(char chan);
 int	lecroy_is_maths_chan(char chan);

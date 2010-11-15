@@ -538,6 +538,17 @@ char	cmd[256];
 	return actual_s_rate;
 	}
 
+/* Sets the trigger source channel (sets it to be an EDGE trigger too) */
+int	lecroy_set_trigger_channel(CLINK *clink, char chan) {
+char	source[20];
+char	cmd[256];
+
+	memset(source,0,20);
+	lecroy_scope_channel_str(chan, source);
+	sprintf(cmd, "TRSE EDGE,SR,%s", source);
+	return vxi11_send(clink, cmd);
+	}
+
 /* In the library we tend to use a single char to denote a channel. This works
  * fairly well, and is rooted in the old days when LeCroy called their maths
  * channels A, B, C, and D. So channel 'A' is actually maths function "F1". */
