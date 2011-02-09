@@ -332,10 +332,16 @@ int	test = 0;
 long	lecroy_write_wfi_file(CLINK *clink, char *wfiname, char chan, char *captured_by, int no_of_traces, int bytes_per_point, unsigned long timeout) {
 	return lecroy_write_wfi_file(clink, wfiname, chan, captured_by, no_of_traces, bytes_per_point, lecroy_calculate_no_of_bytes(clink, chan, timeout), timeout);
 	}
-
+/* This wrapper does not force the value of voffset (and is the usual behaviour). You might want to force voffset,
+ * typically making it zero, if prior to saving the waveform to the disk you have subtracted one waveform from
+ * another, using the lecroy_subtract_char_arrays() fn. */
 long	lecroy_write_wfi_file(CLINK *clink, char *wfiname, char chan, char *captured_by, int no_of_traces, int bytes_per_point, long no_of_bytes, unsigned long timeout) {
+	return lecroy_write_wfi_file(clink, wfiname, chan, captured_by, no_of_traces, bytes_per_point, no_of_bytes, timeout, 0, 0);
+	}
+
+long	lecroy_write_wfi_file(CLINK *clink, char *wfiname, char chan, char *captured_by, int no_of_traces, int bytes_per_point, long no_of_bytes, unsigned long timeout, int force_voffset, double voffset) {
 FILE	*wfi;
-double	vgain,voffset,hinterval,hoffset;
+double	vgain,hinterval,hoffset;
 int	ret;
 char	cmd[256];
 char	source[20];
@@ -354,9 +360,11 @@ int	no_of_segments;
 	hoffset = lecroy_obtain_insp_double(clink, cmd, timeout);
 	sprintf(cmd, "%s:INSP? VERTICAL_GAIN", source);
 	vgain = lecroy_obtain_insp_double(clink, cmd, timeout);
-	sprintf(cmd, "%s:INSP? VERTICAL_OFFSET", source);
-	voffset = lecroy_obtain_insp_double(clink, cmd, timeout);
-	//sprintf(cmd, "VBS? 'Return=app.Acquisition.%s.VerOffset'", source);
+	if(force_voffset == 0) {
+		sprintf(cmd, "%s:INSP? VERTICAL_OFFSET", source);
+		voffset = lecroy_obtain_insp_double(clink, cmd, timeout);
+		}
+	//sprintf(cmd, "VBS? 'Return=app.Acquisition.%s.VerOffset'", source); // commented out as this doesn't work for maths channels
 	//voffset = vxi11_obtain_double_value(clink, cmd, timeout);
 
 	if(lecroy_is_maths_chan(chan) == 0) {
@@ -377,7 +385,7 @@ int	no_of_segments;
 			fprintf(wfi,"%% Number of bytes:\n%d\n\n",(no_of_bytes / no_of_segments));
 			}
 		fprintf(wfi,"%% Vertical gain:\n%g\n\n",vgain);
-		fprintf(wfi,"%% Vertical offset:\n%g\n\n",-voffset);
+		fprintf(wfi,"%% Vertical offset:\n%g\n\n",voffset);
 		fprintf(wfi,"%% Horizontal interval:\n%g\n\n",hinterval);
 		fprintf(wfi,"%% Horizontal offset:\n%g\n\n",hoffset);
 		if(no_of_segments==0){
@@ -386,12 +394,12 @@ int	no_of_segments;
 		else{
 			fprintf(wfi,"%% Number of traces:\n%d\n\n",(no_of_traces * no_of_segments));
 			}
-		fprintf(wfi,"%% Number of bytes per data-point:\n%d\n\n", bytes_per_point); /* always 2... at least that's the intention */
+		fprintf(wfi,"%% Number of bytes per data-point:\n%d\n\n", bytes_per_point);
 		fprintf(wfi,"%% Keep all datapoints (0 or missing knocks off 1 point, legacy lecroy):\n%d\n\n",1);
 		fclose(wfi);
 		}
 	else {
-		printf("error: agilent_write_wfi_file: could not open %s for writing\n",wfiname);
+		printf("error: lecroy_write_wfi_file: could not open %s for writing\n",wfiname);
 		return -1;
 		}
 	return no_of_bytes;
@@ -578,6 +586,30 @@ void	lecroy_scope_channel_str(char chan, char *source){
 		case 'H' :
 		case 'h' : strcpy(source,"F8");
 			break;
+		case 'S' :
+		case 's' : strcpy(source,"M1");
+			break;
+		case 'T' :
+		case 't' : strcpy(source,"M2");
+			break;
+		case 'U' :
+		case 'u' : strcpy(source,"M3");
+			break;
+		case 'V' :
+		case 'v' : strcpy(source,"M4");
+			break;
+		case 'W' :
+		case 'w' : strcpy(source,"M5");
+			break;
+		case 'X' :
+		case 'x' : strcpy(source,"M6");
+			break;
+		case 'Y' :
+		case 'y' : strcpy(source,"M7");
+			break;
+		case 'Z' :
+		case 'z' : strcpy(source,"M8");
+			break;
 		case '1' : strcpy(source,"C1");
 			break;
 		case '2' : strcpy(source,"C2");
@@ -650,4 +682,186 @@ int	lecroy_is_maths_chan(char chan) {
 	if(chan=='1' || chan=='2' || chan=='3' || chan=='4')    return 0;
 	else							return 1;
 	}
+
+/* The following function takes data which as been acquired from the scope as a
+ * bunch of segmented traces, then averages the traces and puts the averages 
+ * into "out_buf". Although "in_buf" and "out_buf" are (unsigned) chars, the
+ * stream of bytes contained within them represent signed chars (if
+ * bytes_per_point == 1) or signed shorts (if bytes_per_point == 2). The order
+ * of the 16-bit words that are sent from the scope to the PC is determined by
+ * the "COMM_ORDER LO" command (issued in the lecroy_init() function, and which
+ * the scope should remember unless it's had a factory reset), i.e. little
+ * endian: LSB then MSB. Note that if you elect to use 16 bit transfers and the
+ * data contains only 8 bits of information, i.e. traces from channels 1--4 
+ * rather than maths channels, then all the LSBs are zeros.
+ *
+ * The function does not talk to the scope in any way, it purely moves data
+ * around. It could go in any library, I happen to need it for this one.
+ */
+long	lecroy_average_segmented_data(char *in_buf, unsigned long in_buf_len, char *out_buf, unsigned long out_buf_len, int no_of_segments, int bytes_per_point) {
+int	i, j, points_per_trace;
+// need a temporary buffer to store the running total in, this needs to be >16 bits long, an int will do
+int	*int_buf;
+short	*short_in_buf, *short_out_buf;
+signed char	*signed_char_in_buf, *signed_char_out_buf;
+
+	points_per_trace = (int) (in_buf_len / (bytes_per_point * no_of_segments));
+	
+	int_buf = new int[points_per_trace];
+	// Set the VALUES to be zero (memset with zeros does NOT work!)
+	for(i=0;i<points_per_trace;i++)	int_buf[i] = 0;
+
+	/* We average a stack of segmented traces by adding up the values of 
+	 * each point, then dividing the sum (of each point) by the number of
+	 * segments. In order to do this, the PC needs to know what sort of
+	 * numbers the bytes or words represent. At the moment they are stored in
+	 * an array of (unsigned) chars; however we know that for 8-bit transfers
+	 * these correspond to int8 (signed char) or int16 (short int) numbers.
+	 * How to tell the PC this? Well I tried converting from 2's compliment
+	 * back to the numbers they represent and storing them in new arrays, but
+	 * it was messy. It turns out the easiest way is to make a new array of
+	 * the right sort (signed char or short) and right size, and use memcpy()
+	 * to simply move the bytes over to the new array, and when they are 
+	 * read from the array they are interpreted correctly. We also need to
+	 * do this once we've done the averaging. The flow chart is as follows:
+	 *
+	 *                      (unsigned) char
+	 *                             |
+	 *                           memcpy
+	 *                       ______|______
+	 *                      /             \
+	 *     8-bit---> signed char       short int <---16-bit
+	 *                      \             /
+	 *                       \           /
+	 *            int (signed 32 bit) to do maths
+	 *                       /           \
+	 *                      /             \
+	 *     8-bit---> signed char       short int <---16-bit
+	 *                      \             /
+	 *                       -------------
+	 *                             |
+	 *                           memcpy
+	 *                             |
+	 *                      (unsigned) char
+	 *
+	 */
+	if(bytes_per_point == 1) {
+		signed_char_in_buf = new signed char[in_buf_len];
+		signed_char_out_buf = new signed char[points_per_trace];
+		memcpy(signed_char_in_buf, in_buf, in_buf_len);
+		// Go through each point in the trace. This isn't the order they're stored in
+		// in the array, but it's the most logical way of doing the maths.
+		for(i=0; i<points_per_trace; i++) {
+			for(j=0; j<no_of_segments; j++) { // running everage
+				int_buf[i] += signed_char_in_buf[(j * points_per_trace) + i];
+				}
+			int_buf[i] /= no_of_segments;
+			if((int_buf[i] > 127) || (int_buf[i] < -128)) {
+				printf("int_buf[%d] = %d\n",i,int_buf[i]);
+				}
+			signed_char_out_buf[i] = (signed char) int_buf[i];
+			}
+		memcpy(out_buf, signed_char_out_buf, out_buf_len);
+		delete[] signed_char_out_buf;
+		delete[] signed_char_in_buf;
+		}
+	else {
+		short_in_buf = new short[in_buf_len / bytes_per_point];
+		short_out_buf = new short[points_per_trace];
+		memcpy(short_in_buf, in_buf, in_buf_len);
+		for(i=0; i<points_per_trace; i++) {
+			for(j=0; j<no_of_segments; j++) {
+				int_buf[i] += short_in_buf[(j * points_per_trace) + i];
+				}
+			int_buf[i] /= no_of_segments;
+			if((int_buf[i] > 32767) || (int_buf[i] < -32768)) {
+				printf("int_buf[%d] = %d\n",i,int_buf[i]);
+				}
+			short_out_buf[i] = (short) int_buf[i];
+			}
+		memcpy(out_buf, short_out_buf, out_buf_len);
+		delete[] short_out_buf;
+		delete[] short_in_buf;
+		}
+	delete[] int_buf;
+	}
+
+/* Generic functions to subtract two arrays: A-B = OUT. A, B and OUT can be any
+ * mixture of 8-bit or 16-bit signed integers, but as they are passed to the
+ * function they are (unsigned) chars. See fn above for more info on conversion.
+ */
+long	lecroy_subtract_char_arrays(char *in_buf_a, char *in_buf_b, char *out_buf, int bytes_per_point_a, int bytes_per_point_b, int bytes_per_point_out, int points_per_trace) {
+int	i, j;
+int	in_buf_len_a, in_buf_len_b, out_buf_len;
+// need a temporary buffer to store the running total in, this needs to be >16 bits long, an int will do
+int	*int_buf;
+short	*short_in_buf_a, *short_in_buf_b, *short_out_buf;
+signed char	*signed_char_tmp, *signed_char_in_buf, *signed_char_out_buf;
+
+	in_buf_len_a = points_per_trace * bytes_per_point_a;
+	in_buf_len_b = points_per_trace * bytes_per_point_b;
+	out_buf_len  = points_per_trace * bytes_per_point_out;
+	
+	int_buf = new int[points_per_trace];
+	short_in_buf_a = new short[points_per_trace];
+	short_in_buf_b = new short[points_per_trace];
+	short_out_buf = new short[points_per_trace];
+
+	signed_char_tmp = new signed char[2 * points_per_trace];
+	signed_char_in_buf = new signed char[points_per_trace];
+	signed_char_out_buf = new signed char[points_per_trace];
+
+	if(bytes_per_point_a == 1) {
+		memcpy(signed_char_in_buf, in_buf_a, in_buf_len_a); // memcpy "does conversion" unsigned char to signed char
+		for(i=0; i<points_per_trace; i++) {
+			signed_char_tmp[2*i] = 0; // LSB = 0
+			signed_char_tmp[(2*i)+1] = signed_char_in_buf[i]; // MSB = 8-bit data (ie "convert" to 16 bit)
+			}
+		memcpy(short_in_buf_a, signed_char_tmp, 2 * points_per_trace); // memcpy "does conversion" to short int
+		}
+	else {
+		memcpy(short_in_buf_a, in_buf_a, in_buf_len_a);
+		}
+	for(i=0; i<points_per_trace; i++) {
+		int_buf[i] = (int) short_in_buf_a[i]; // copy A into int_buf
+		}
+
+	if(bytes_per_point_b == 1) {
+		memcpy(signed_char_in_buf, in_buf_b, in_buf_len_b);
+		for(i=0; i<points_per_trace; i++) {
+			signed_char_tmp[2*i] = 0;
+			signed_char_tmp[(2*i)+1] = signed_char_in_buf[i];
+			}
+		memcpy(short_in_buf_b, signed_char_tmp, 2 * points_per_trace);
+		}
+	else {
+		memcpy(short_in_buf_b, in_buf_b, in_buf_len_b);
+		}
+	for(i=0; i<points_per_trace; i++) {
+		int_buf[i] -= (int) short_in_buf_b[i]; // subtract B from int_buf (containing A)
+		if(int_buf[i] < -32768)	int_buf[i] = -32768; // Limit the range of numbers to those...
+		if(int_buf[i] > 32767)	int_buf[i] = 32767; // ...capable of being stored in a short int
+		short_out_buf[i] = (short) int_buf[i];
+		}
+
+	if(bytes_per_point_out == 1) {
+		memcpy(signed_char_tmp, short_out_buf, 2 * points_per_trace); // copy all bytes to a temporary signed char array. The LSB bytes are nonsense.
+		for(i=0; i<points_per_trace; i++) {
+			signed_char_out_buf[i] = signed_char_tmp[(2*i)+1]; // MSB only (throw away LSB)
+			}
+		memcpy(out_buf, signed_char_out_buf, out_buf_len);
+		}
+	else {
+		memcpy(out_buf, short_out_buf, out_buf_len);
+		}
+
+	delete[] int_buf;
+	delete[] short_in_buf_a;
+	delete[] short_in_buf_b;
+	delete[] short_out_buf;
+	delete[] signed_char_tmp;
+	delete[] signed_char_in_buf;
+	delete[] signed_char_out_buf;
+	}
+
 
