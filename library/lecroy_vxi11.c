@@ -172,15 +172,15 @@ long lecroy_calculate_no_of_bytes_from_vbs(VXI11_CLINK * clink, char chan)
  *         \----------------- whatever array you ask for, if you ask for "DAT1" you get "DAT1,#9...."
  */
 long lecroy_receive_data_block(VXI11_CLINK * clink, char *buffer,
-			       unsigned long len, unsigned long timeout)
+			       size_t len, unsigned long timeout)
 {
 /* I'm not sure what the maximum length of this header is, I'll assume it's
  * 24 (DATA_ARRAY_1,#9 + 9 digits) */
-	unsigned long necessary_buffer_size;
+	size_t necessary_buffer_size;
 	char *in_buffer;
 	int ret;
 	int ndigits;
-	unsigned long returned_bytes;
+	size_t returned_bytes;
 	int l = 0;
 	char scan_cmd[20];
 	necessary_buffer_size = len + 25;
@@ -221,7 +221,7 @@ long lecroy_receive_data_block(VXI11_CLINK * clink, char *buffer,
  * control to some other process (eg moving a motorised stage), and all we want to do now is
  * grab the data */
 long lecroy_get_data(VXI11_CLINK * clink, char chan, int clear_sweeps,
-		     char *buf, unsigned long buf_len, unsigned long timeout)
+		     char *buf, size_t buf_len, unsigned long timeout)
 {
 	return lecroy_get_data(clink, chan, clear_sweeps, buf, buf_len, 1,
 			       timeout);
@@ -254,7 +254,7 @@ long lecroy_get_data(VXI11_CLINK * clink, char chan, int clear_sweeps,
  *
  */
 long lecroy_get_data(VXI11_CLINK * clink, char chan, int clear_sweeps,
-		     char *buf, unsigned long buf_len, int arm_and_wait,
+		     char *buf, size_t buf_len, int arm_and_wait,
 		     unsigned long timeout)
 {
 	char cmd[256];
@@ -837,8 +837,8 @@ int lecroy_is_maths_chan(char chan)
  * The function does not talk to the scope in any way, it purely moves data
  * around. It could go in any library, I happen to need it for this one.
  */
-long lecroy_average_segmented_data(char *in_buf, unsigned long in_buf_len,
-				   char *out_buf, unsigned long out_buf_len,
+long lecroy_average_segmented_data(char *in_buf, size_t in_buf_len,
+				   char *out_buf, size_t out_buf_len,
 				   int no_of_segments, int bytes_per_point)
 {
 	int i, j, points_per_trace;

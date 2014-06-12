@@ -33,14 +33,14 @@ long lecroy_obtain_insp_long(VXI11_CLINK * clink, const char *cmd,
 double lecroy_obtain_insp_double(VXI11_CLINK * clink, const char *cmd,
 				 unsigned long timeout);
 long lecroy_receive_data_block(VXI11_CLINK * clink, char *buffer,
-			       unsigned long len, unsigned long timeout);
+			       size_t len, unsigned long timeout);
 long lecroy_calculate_no_of_bytes(VXI11_CLINK * clink, char chan,
 				  unsigned long timeout);
 long lecroy_calculate_no_of_bytes_from_vbs(VXI11_CLINK * clink, char chan);
 long lecroy_get_data(VXI11_CLINK * clink, char chan, int clear_sweeps,
-		     char *buf, unsigned long buf_len, unsigned long timeout);
+		     char *buf, size_t buf_len, unsigned long timeout);
 long lecroy_get_data(VXI11_CLINK * clink, char chan, int clear_sweeps,
-		     char *buf, unsigned long buf_len, int arm_and_wait,
+		     char *buf, size_t buf_len, int arm_and_wait,
 		     unsigned long timeout);
 void lecroy_set_for_auto(VXI11_CLINK * clink);
 void lecroy_set_for_norm(VXI11_CLINK * clink);
@@ -78,19 +78,19 @@ int lecroy_set_trigger_channel(VXI11_CLINK * clink, char chan);
 void lecroy_scope_channel_str(char chan, char *source);
 char lecroy_relate_function_to_source(char chan);
 int lecroy_is_maths_chan(char chan);
-long lecroy_average_segmented_data(char *in_buf, unsigned long in_buf_len,
-				   char *out_buf, unsigned long out_buf_len,
+long lecroy_average_segmented_data(char *in_buf, size_t in_buf_len,
+				   char *out_buf, size_t out_buf_len,
 				   int no_of_segments, int bytes_per_point);
 long lecroy_subtract_char_arrays(char *in_buf_a, char *in_buf_b, char *out_buf,
 				 int bytes_per_point_a, int bytes_per_point_b,
 				 int bytes_per_point_out, int points_per_trace);
 /*int	lecroy_report_status(VXI11_CLINK *clink, unsigned long timeout);
-int	lecroy_get_setup(VXI11_CLINK *clink, char *buf, unsigned long buf_len);
-int	lecroy_send_setup(VXI11_CLINK *clink, char *buf, unsigned long buf_len);
-long	lecroy_get_screen_data(VXI11_CLINK *clink, char chan, char *buf, unsigned long buf_len, unsigned long timeout, double s_rate, long npoints);
+int	lecroy_get_setup(VXI11_CLINK *clink, char *buf, size_t buf_len);
+int	lecroy_send_setup(VXI11_CLINK *clink, char *buf, size_t buf_len);
+long	lecroy_get_screen_data(VXI11_CLINK *clink, char chan, char *buf, size_t buf_len, unsigned long timeout, double s_rate, long npoints);
 int	lecroy_set_for_capture(VXI11_CLINK *clink, double s_rate, long npoints, unsigned long timeout);
-long	lecroy_get_data(VXI11_CLINK *clink, char chan, int digitise, char *buf, unsigned long buf_len,unsigned long timeout);
-int	lecroy_get_preamble(VXI11_CLINK *clink, char *buf, unsigned long buf_len);
+long	lecroy_get_data(VXI11_CLINK *clink, char chan, int digitise, char *buf, size_t buf_len,unsigned long timeout);
+int	lecroy_get_preamble(VXI11_CLINK *clink, char *buf, size_t buf_len);
 long	lecroy_write_wfi_file(VXI11_CLINK *clink, char *wfiname, long no_of_bytes, char *captured_by, int no_of_traces, unsigned long timeout);
 int	lecroy_set_averages(VXI11_CLINK *clink, int no_averages);
 long	lecroy_get_averages(VXI11_CLINK *clink);
