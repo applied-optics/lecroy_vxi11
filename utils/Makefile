@@ -1,4 +1,5 @@
-MAKE=make
+include ../config.mk
+
 DIRS=lgetwf
 
 .PHONY : all clean install

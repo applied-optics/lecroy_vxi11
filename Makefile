@@ -1,3 +1,5 @@
+VERSION=1.00
+
 MAKE=make
 DIRS=library utils
 
