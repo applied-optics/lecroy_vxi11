@@ -7,7 +7,7 @@ CFLAGS:=$(CFLAGS) -I../../library
 all:	lgetwf
 
 lgetwf: lgetwf.o ../../library/$(full_libname)
-	$(CXX) $(LDFLAGS) -o $@ $^
+	$(CXX) $(LDFLAGS) -o $@ $^ -lvxi11
 
 lgetwf.o: lgetwf.c ../../library/$(full_libname)
 	$(CXX) $(CFLAGS) -c -o $@ $<
