@@ -222,7 +222,7 @@ int main(int argc, char *argv[])
 
 		/* Check if we've specifically requested 8-bit transfers, if so, set it up */
 		if (bytes_per_point == 1)
-			vxi11_send_str(clink, "COMM_FORMAT DEF9,BYTE,BIN");
+			vxi11_send_sprintf(clink, "COMM_FORMAT DEF9,BYTE,BIN");
 
 		if (got_no_averages == TRUE) {
 			chnl = lecroy_set_averages(clink, chnl, no_averages);
@@ -262,7 +262,7 @@ int main(int argc, char *argv[])
 		//lecroy_set_for_norm(clink);
 		/* Check if we've specifically requested 8-bit transfers, if so, set back to 16 */
 		if (bytes_per_point == 1)
-			vxi11_send_str(clink, "COMM_FORMAT DEF9,WORD,BIN");
+			vxi11_send_sprintf(clink, "COMM_FORMAT DEF9,WORD,BIN");
 		fwrite(buf, sizeof(char), buf_size, f_wf);
 //              fwrite(buf, sizeof(char), bytes_returned, f_wf);
 		fclose(f_wf);
