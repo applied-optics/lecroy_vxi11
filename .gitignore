@@ -1,3 +1,5 @@
+*.o
+library/liblecroy_vxi11.*
 docs
 utils/lgetwf/test2.wf
 utils/lgetwf/test2.wfi

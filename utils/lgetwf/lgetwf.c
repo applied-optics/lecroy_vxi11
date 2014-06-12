@@ -12,7 +12,7 @@
  * the same wf file.
  *
  * The source is extensively commented and from this, and a look at the 
- * lecroy_user.c library, you will begin to understand the approach to 
+ * lecroy_vxi11.c library, you will begin to understand the approach to 
  * acquiring data that I've taken.
  *
  * You will also need the
@@ -36,7 +36,10 @@
  * The author's email address is steve.sharples@nottingham.ac.uk
  */
 
-#include "../../library/lecroy_user.h"
+#include <stdio.h>
+#include <string.h>
+
+#include "lecroy_vxi11.h"
 
 #ifndef	BOOL
 #define	BOOL	int
@@ -78,13 +81,12 @@ double		s_rate=0;
 long		npoints=0;
 double		actual_s_rate;
 long		actual_npoints;
-CLINK		*clink; /* client link (actually a structure contining CLIENT and VXI11_LINK pointers) */
+VXI11_CLINK		*clink; /* client link (actually a structure contining CLIENT and VXI11_LINK pointers) */
 int		l;
 char		cmd[256];
 long		long_ret;
 double		double_ret;
 
-	clink = new CLINK; /* allocate some memory */
 	progname = argv[0];
 
 	while(index<argc){
@@ -173,10 +175,10 @@ double		double_ret;
 	if (f_wf > 0) {
 	/* This utility illustrates the general idea behind how data is acquired.
 	 * First we open the device, referenced by an IP address, and obtain
-	 * a client id, and a link id, all contained in a "CLINK" structure.  Each
+	 * a client id, and a link id, all contained in a "VXI11_CLINK" structure.  Each
 	 * client can have more than one link. For simplicity we bundle them together. */
 
-		if (lecroy_open(serverIP,clink) != 0) { // could also use "vxi11_open_device()"
+		if (lecroy_open(&clink, serverIP) != 0) { // could also use "vxi11_open_device()"
 			printf("Quitting...\n");
 			exit(2);
 			}
@@ -193,7 +195,7 @@ double		double_ret;
 		actual_s_rate = lecroy_set_sample_rate(clink, s_rate, npoints, timeout);
 
 	/* Check if we've specifically requested 8-bit transfers, if so, set it up */
-		if(bytes_per_point == 1) vxi11_send(clink, "COMM_FORMAT DEF9,BYTE,BIN");
+		if(bytes_per_point == 1) vxi11_send_str(clink, "COMM_FORMAT DEF9,BYTE,BIN");
 
 		if(got_no_averages == TRUE) {
 			chnl = lecroy_set_averages(clink, chnl, no_averages);
@@ -223,7 +225,7 @@ double		double_ret;
 		bytes_returned = lecroy_get_data(clink, chnl, clear_sweeps, buf, buf_size, got_no_segments, timeout);
 		//lecroy_set_for_norm(clink);
 	/* Check if we've specifically requested 8-bit transfers, if so, set back to 16 */
-		if(bytes_per_point == 1) vxi11_send(clink, "COMM_FORMAT DEF9,WORD,BIN");
+		if(bytes_per_point == 1) vxi11_send_str(clink, "COMM_FORMAT DEF9,WORD,BIN");
 		fwrite(buf, sizeof(char), buf_size, f_wf);
 //		fwrite(buf, sizeof(char), bytes_returned, f_wf);
 		fclose(f_wf);
@@ -231,7 +233,7 @@ double		double_ret;
 
 
 	/* Finally we sever the link to the client. */
-		lecroy_close(serverIP,clink); // could also use "vxi11_close_device()"
+		lecroy_close(clink, serverIP); // could also use "vxi11_close_device()"
 		}
 	else {
 		printf("error: could not open file for writing, quitting...\n");
@@ -243,7 +245,7 @@ double		double_ret;
  * Another way of going through the acquisition loop, which is more relevant to
  * acquiring multiple waveforms, is as follows:
 
-	lecroy_open(serverIP,clink);
+	lecroy_open(&clink, serverIP);
 	lecroy_init(clink);
 	lecroy_set_for_capture(clink, s_rate, npoints, timeout);
 	buf_size = lecroy_calculate_no_of_bytes(clink, chnl, timeout); // performs :DIG

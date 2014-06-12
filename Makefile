@@ -1,5 +1,5 @@
 MAKE=make
-DIRS=utils
+DIRS=library utils
 
 .PHONY : all clean install
 
