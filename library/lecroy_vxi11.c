@@ -38,7 +38,7 @@ int lecroy_open(VXI11_CLINK ** clink, const char *ip)
 /* Again, just a wrapper */
 int lecroy_close(VXI11_CLINK * clink, const char *ip)
 {
-	vxi11_send_sprintf(clink, "MSG");	/* remove message on bottom of screen */
+	vxi11_send_printf(clink, "MSG");	/* remove message on bottom of screen */
 	return vxi11_close_device(clink, ip);
 }
 
@@ -52,15 +52,15 @@ int lecroy_init(VXI11_CLINK * clink)
 	int ret;
 	/* Sets DEF9 (defines arbitrary data block header), 16-bit data
 	 * (needed when averaging), binary format (more efficient than ascii) */
-	ret = vxi11_send_sprintf(clink, "COMM_FORMAT DEF9,WORD,BIN");
+	ret = vxi11_send_printf(clink, "COMM_FORMAT DEF9,WORD,BIN");
 	if (ret < 0) {
 		printf
 		    ("ERROR in lecroy_init, could not send very first command.\n");
 		return ret;
 	}
-	vxi11_send_sprintf(clink, "COMM_HEADER OFF");	/* much easier parsing of responses */
-	vxi11_send_sprintf(clink, "COMM_ORDER LO");	/* sets endian-ness to Intel, ie LSB, MSB */
-	vxi11_send_sprintf(clink, "MSG \"STEVE'S LINUX VXI-11 LECROY DRIVER\"");	/* message on bottom of screen */
+	vxi11_send_printf(clink, "COMM_HEADER OFF");	/* much easier parsing of responses */
+	vxi11_send_printf(clink, "COMM_ORDER LO");	/* sets endian-ness to Intel, ie LSB, MSB */
+	vxi11_send_printf(clink, "MSG \"STEVE'S LINUX VXI-11 LECROY DRIVER\"");	/* message on bottom of screen */
 	return 0;
 }
 
@@ -266,7 +266,7 @@ long lecroy_get_data(VXI11_CLINK * clink, char chan, int clear_sweeps,
 	if ((is_maths_chan == 1) && (clear_sweeps == 1))
 		lecroy_clear_sweeps(clink);
 	if (arm_and_wait == 1)
-		vxi11_send_sprintf(clink, "ARM;WAIT");
+		vxi11_send_printf(clink, "ARM;WAIT");
 	if ((arm_and_wait == 1) || (is_maths_chan == 0)) {
 		ret = vxi11_obtain_long_value_timeout(clink, "*OPC?", timeout);
 		if (ret != 1) {
@@ -278,28 +278,28 @@ long lecroy_get_data(VXI11_CLINK * clink, char chan, int clear_sweeps,
 	if ((is_maths_chan == 1) && (clear_sweeps == 1))
 		lecroy_wait_all_averages(clink, timeout);
 	lecroy_scope_channel_str(chan, source);
-	vxi11_send_sprintf(clink, "%s:WF? DAT1", source);
+	vxi11_send_printf(clink, "%s:WF? DAT1", source);
 	return lecroy_receive_data_block(clink, buf, buf_len, timeout);
 }
 
 void lecroy_set_for_auto(VXI11_CLINK * clink)
 {
-	vxi11_send_sprintf(clink, "TRMD AUTO");
+	vxi11_send_printf(clink, "TRMD AUTO");
 }
 
 void lecroy_set_for_norm(VXI11_CLINK * clink)
 {
-	vxi11_send_sprintf(clink, "TRMD NORM");
+	vxi11_send_printf(clink, "TRMD NORM");
 }
 
 void lecroy_single(VXI11_CLINK * clink)
 {
-	vxi11_send_sprintf(clink, "ARM;WAIT");
+	vxi11_send_printf(clink, "ARM;WAIT");
 }
 
 void lecroy_stop(VXI11_CLINK * clink)
 {
-	vxi11_send_sprintf(clink, "STOP");
+	vxi11_send_printf(clink, "STOP");
 }
 
 int lecroy_get_bytes_per_point(VXI11_CLINK * clink)
@@ -319,7 +319,7 @@ void lecroy_clear_sweeps(VXI11_CLINK * clink)
 	/* Needs to send an INR? query, in order to reset the registers
 	 * (we don't care what the value is) */
 	vxi11_obtain_long_value(clink, "INR?");
-	vxi11_send_sprintf(clink, "CLSW");
+	vxi11_send_printf(clink, "CLSW");
 }
 
 int lecroy_wait_all_averages(VXI11_CLINK * clink, unsigned long timeout)
@@ -503,7 +503,7 @@ char lecroy_set_averages(VXI11_CLINK * clink, char chan, int no_averages)
 	if (no_averages > 1) {
 		lecroy_scope_channel_str(maths_chan, maths_chan_str);
 		lecroy_scope_channel_str(chan, source);
-		vxi11_send_sprintf(clink, 
+		vxi11_send_printf(clink, 
 			"%s:DEF EQN, 'AVG(%s)',AVERAGETYPE,SUMMED,SWEEPS,%d SWEEP",
 			maths_chan_str, source, no_averages);
 		lecroy_display_channel(clink, maths_chan, 1);
@@ -588,9 +588,9 @@ int lecroy_set_segmented(VXI11_CLINK * clink, int no_segments, int arm)
 	int actual_no_segments;
 
 	if (arm == 0) {
-		vxi11_send_sprintf(clink, "SEQ ON,%d", no_segments);
+		vxi11_send_printf(clink, "SEQ ON,%d", no_segments);
 	} else {
-		vxi11_send_sprintf(clink, "SEQ ON,%d;ARM", no_segments);
+		vxi11_send_printf(clink, "SEQ ON,%d;ARM", no_segments);
 	}
 	actual_no_segments = lecroy_get_segmented(clink);
 	return actual_no_segments;
@@ -604,9 +604,9 @@ int lecroy_display_channel(VXI11_CLINK * clink, char chan, int on_or_off)
 	memset(source, 0, 20);
 	lecroy_scope_channel_str(chan, source);
 	if (on_or_off == 0) {
-		return vxi11_send_sprintf(clink, "%s:TRACE OFF", source);
+		return vxi11_send_printf(clink, "%s:TRACE OFF", source);
 	} else {
-		return vxi11_send_sprintf(clink, "%s:TRACE ON", source);
+		return vxi11_send_printf(clink, "%s:TRACE ON", source);
 	}
 }
 
@@ -623,12 +623,12 @@ double lecroy_set_sample_rate(VXI11_CLINK * clink, double s_rate, long n_points,
 		    vxi11_obtain_double_value_timeout(clink, "TIME_DIV?",
 						      timeout) * 10.0;
 		expected_s_rate = (double)n_points / time_range;
-		vxi11_send_sprintf(clink, "VBS 'app.Acquisition.Horizontal.SampleRate=%g'",
+		vxi11_send_printf(clink, "VBS 'app.Acquisition.Horizontal.SampleRate=%g'",
 			expected_s_rate);
 	}
 
 	if (s_rate > 0) {
-		vxi11_send_sprintf(clink, "VBS 'app.Acquisition.Horizontal.SampleRate=%g'",
+		vxi11_send_printf(clink, "VBS 'app.Acquisition.Horizontal.SampleRate=%g'",
 			s_rate);
 	}
 	actual_s_rate =
@@ -645,7 +645,7 @@ int lecroy_set_trigger_channel(VXI11_CLINK * clink, char chan)
 
 	memset(source, 0, 20);
 	lecroy_scope_channel_str(chan, source);
-	return vxi11_send_sprintf(clink, "TRSE EDGE,SR,%s", source);
+	return vxi11_send_printf(clink, "TRSE EDGE,SR,%s", source);
 }
 
 /* In the library we tend to use a single char to denote a channel. This works
